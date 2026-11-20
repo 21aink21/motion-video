@@ -38,6 +38,30 @@ export const useHiccupImpulse = (sequenceOffsetFrames = 0) => {
   }, 0);
 };
 
+// Fallback untuk <Suspense>: menahan render Remotion selama model .glb masih dimuat.
+// delayRender dipanggil saat fallback tampil, continueRender saat fallback hilang (model siap).
+// Ini menggantikan delayRender di dalam HologramGLB yang bocor ketika useGLTF "suspend".
+const ModelLoader: React.FC = () => {
+  useEffect(() => {
+    const handle = delayRender('Loading 3D models');
+    return () => continueRender(handle);
+  }, []);
+  return null;
+};
+
+// Preload semua model sekali di awal, supaya tidak "pop-in" saat scene berganti.
+const MODEL_FILES = [
+  'lungs.glb',
+  'brain.glb',
+  'larynx.glb',
+  'stomach.glb',
+  'soda-can.glb',
+  'drum.glb',
+  'water-glass.glb',
+  'clock.glb',
+];
+MODEL_FILES.forEach((file) => useGLTF.preload(staticFile(`models/${file}`)));
+
 // Komponen Reusable Loader Model .glb dengan Material Dark Emerald Hologram
 interface HologramGLBProps {
   filename: string;
@@ -58,7 +82,6 @@ const HologramGLB: React.FC<HologramGLBProps> = ({
   wireframe = false,
   accentColor = '#097969',
 }) => {
-  const [handle] = React.useState(() => delayRender(`Loading ${filename}`));
   const { scene } = useGLTF(staticFile(`models/${filename}`));
 
   const material = useMemo(
@@ -87,13 +110,8 @@ const HologramGLB: React.FC<HologramGLBProps> = ({
     return clone;
   }, [scene, material]);
 
-  useEffect(() => {
-    continueRender(handle);
-  }, [handle]);
-
-  const scaleVec: [number, number, number] = Array.isArray(scale)
-    ? scale
-    : [scale, scale, scale];
+  const scaleVec: [number, number, number] =
+    typeof scale === 'number' ? [scale, scale, scale] : scale;
 
   return (
     <group position={position} rotation={rotation} scale={scaleVec}>
@@ -277,7 +295,7 @@ export const DiaphragmElevatorScene: React.FC = () => {
 
   return (
     <group position={[0, 0.15, 0]}>
-      <Suspense fallback={null}>
+      <Suspense fallback={<ModelLoader />}>
         {/* Model 3D Paru-paru */}
         <HologramGLB
           filename="lungs.glb"
@@ -341,7 +359,7 @@ export const VocalChordSnapScene: React.FC = () => {
 
   return (
     <group>
-      <Suspense fallback={null}>
+      <Suspense fallback={<ModelLoader />}>
         {/* Model Laring (Pita Suara) di Bagian Atas */}
         <HologramGLB
           filename="larynx.glb"
@@ -406,7 +424,7 @@ export const TriggersAndDrummerScene: React.FC = () => {
   const tiltGlitch = isGlitchBeat ? Math.sin(frame * 0.9) * 0.35 : 0;
 
   return (
-    <Suspense fallback={null}>
+    <Suspense fallback={<ModelLoader />}>
       {/* FASE 1: Lambung & Minuman Bersoda */}
       {isStomachPhase && (
         <group>
@@ -501,7 +519,7 @@ export const HarmonyWaveScene: React.FC = () => {
         })}
       </group>
 
-      <Suspense fallback={null}>
+      <Suspense fallback={<ModelLoader />}>
         {/* Model Gelas Air */}
         {showWaterGlass && (
           <HologramGLB
