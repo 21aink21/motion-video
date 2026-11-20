@@ -13,13 +13,15 @@ import { RoundedBox, Sphere, Torus, useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
 import { HICCUP_TIMESTAMPS } from '../subtitlesData';
 
-export const useHiccupImpulse = () => {
-  const frame = useCurrentFrame();
+// Helper: Hitung impuls "HIK!" menggunakan global frame (akurat di dalam <Sequence>)
+export const useHiccupImpulse = (sequenceOffsetFrames = 0) => {
+  const localFrame = useCurrentFrame();
+  const globalFrame = localFrame + sequenceOffsetFrames;
   const { fps } = useVideoConfig();
 
   return HICCUP_TIMESTAMPS.reduce((maxPulse, timeSec) => {
     const triggerFrame = Math.round(timeSec * fps);
-    const elapsed = frame - triggerFrame;
+    const elapsed = globalFrame - triggerFrame;
 
     if (elapsed >= 0 && elapsed <= 55) {
       const p = spring({
@@ -36,6 +38,71 @@ export const useHiccupImpulse = () => {
   }, 0);
 };
 
+// Komponen Reusable Loader Model .glb dengan Material Dark Emerald Hologram
+interface HologramGLBProps {
+  filename: string;
+  position?: [number, number, number];
+  rotation?: [number, number, number];
+  scale?: number | [number, number, number];
+  emissiveIntensity?: number;
+  wireframe?: boolean;
+  accentColor?: string;
+}
+
+const HologramGLB: React.FC<HologramGLBProps> = ({
+  filename,
+  position = [0, 0, 0],
+  rotation = [0, 0, 0],
+  scale = 1,
+  emissiveIntensity = 0.85,
+  wireframe = false,
+  accentColor = '#097969',
+}) => {
+  const [handle] = React.useState(() => delayRender(`Loading ${filename}`));
+  const { scene } = useGLTF(staticFile(`models/${filename}`));
+
+  const material = useMemo(
+    () =>
+      new THREE.MeshStandardMaterial({
+        color: new THREE.Color('#0b3d2e'),
+        emissive: new THREE.Color(accentColor),
+        emissiveIntensity,
+        roughness: 0.25,
+        metalness: 0.78,
+        wireframe,
+      }),
+    [accentColor, wireframe]
+  );
+
+  // Update intensitas cahaya secara efisien tanpa re-clone mesh tiap frame
+  material.emissiveIntensity = emissiveIntensity;
+
+  const clonedScene = useMemo(() => {
+    const clone = scene.clone(true);
+    clone.traverse((child) => {
+      if ((child as THREE.Mesh).isMesh) {
+        (child as THREE.Mesh).material = material;
+      }
+    });
+    return clone;
+  }, [scene, material]);
+
+  useEffect(() => {
+    continueRender(handle);
+  }, [handle]);
+
+  const scaleVec: [number, number, number] = Array.isArray(scale)
+    ? scale
+    : [scale, scale, scale];
+
+  return (
+    <group position={position} rotation={rotation} scale={scaleVec}>
+      <primitive object={clonedScene} />
+    </group>
+  );
+};
+
+// 1. MEGA SHOCKWAVE 3D (Aktif di seluruh video setiap kali terdengar "HIK!")
 export const GlobalHiccupShockwave3D: React.FC = () => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
@@ -59,11 +126,9 @@ export const GlobalHiccupShockwave3D: React.FC = () => {
           extrapolateLeft: 'clamp',
           extrapolateRight: 'clamp',
         });
-
         const opacity = interpolate(elapsed, [0, 8, 55], [0, 1, 0], {
           extrapolateRight: 'clamp',
         });
-
         const sphereBurstScale = interpolate(elapsed, [0, 35], [0.4, 6.5], {
           extrapolateRight: 'clamp',
         });
@@ -114,12 +179,13 @@ export const GlobalHiccupShockwave3D: React.FC = () => {
   );
 };
 
+// 2. Partikel Atmosferik Deterministik (Ikut terdorong saat Shockwave "HIK!")
 export const GlowingParticles: React.FC<{ count?: number; speedMultiplier?: number }> = ({
   count = 110,
   speedMultiplier = 1,
 }) => {
   const frame = useCurrentFrame();
-  const hiccupPulse = useHiccupImpulse();
+  const hiccupPulse = useHiccupImpulse(0);
 
   const particles = useMemo(() => {
     return Array.from({ length: count }).map((_, i) => ({
@@ -160,48 +226,10 @@ export const GlowingParticles: React.FC<{ count?: number; speedMultiplier?: numb
   );
 };
 
-const AnatomicalLungsGLB: React.FC<{ breathScale: number; hiccupPulse: number }> = ({
-  breathScale,
-  hiccupPulse,
-}) => {
-  const [handle] = React.useState(() => delayRender('Loading lungs.glb 3D model'));
-  const { scene } = useGLTF(staticFile('models/lungs.glb'));
-
-  const clonedScene = useMemo(() => {
-    const clone = scene.clone(true);
-    clone.traverse((child) => {
-      if ((child as THREE.Mesh).isMesh) {
-        const mesh = child as THREE.Mesh;
-        mesh.material = new THREE.MeshStandardMaterial({
-          color: new THREE.Color('#0b3d2e'),
-          emissive: new THREE.Color('#097969'),
-          emissiveIntensity: 0.75 + hiccupPulse * 2.5,
-          roughness: 0.25,
-          metalness: 0.8,
-          wireframe: false,
-        });
-      }
-    });
-    return clone;
-  }, [scene, hiccupPulse]);
-
-  useEffect(() => {
-    continueRender(handle);
-  }, [handle]);
-
-  const finalScale = breathScale * (1 + hiccupPulse * 0.25);
-
-  return (
-    <group position={[0, 0.65, 0]} scale={[finalScale, finalScale * 1.05, finalScale]}>
-      <primitive object={clonedScene} />
-      <primitive object={clonedScene.clone()} scale={1.03} />
-    </group>
-  );
-};
-
+// 3. Scene 1 (Frame 0 - 2307): Inti Tombol "HIK!"
 export const HiccupCoreScene: React.FC = () => {
   const frame = useCurrentFrame();
-  const hiccupPulse = useHiccupImpulse();
+  const hiccupPulse = useHiccupImpulse(0);
 
   const baseScale = 1 + Math.sin(frame * 0.05) * 0.06 + hiccupPulse * 0.85;
   const rotY = frame * 0.012 + hiccupPulse * 0.5;
@@ -230,26 +258,55 @@ export const HiccupCoreScene: React.FC = () => {
   );
 };
 
+// 4. Scene 2 (Frame 2307 - 5460): Paru-paru (.glb), Lift Diafragma & Otak (.glb)
 export const DiaphragmElevatorScene: React.FC = () => {
   const frame = useCurrentFrame();
-  const hiccupPulse = useHiccupImpulse();
+  const hiccupPulse = useHiccupImpulse(2307);
 
+  // Siklus napas 3 detik (180 frame)
   const breathCycle = Math.sin((frame / 180) * Math.PI * 2);
   const diaphragmY = interpolate(breathCycle, [-1, 1], [-1.85, -0.55]);
-  const lungScale = interpolate(breathCycle, [-1, 1], [1.32, 0.92]);
+  const lungScale = interpolate(breathCycle, [-1, 1], [1.28, 0.94]);
+
+  // Otak (brain.glb) masuk pada 01:23 (local frame ~2640) saat membahas ritme otomatis otak & saraf
+  const showBrain = frame >= 2600;
+  const brainScale = interpolate(frame, [2600, 2670], [0.001, 0.85], {
+    extrapolateLeft: 'clamp',
+    extrapolateRight: 'clamp',
+  });
 
   return (
-    <group position={[0, 0.2, 0]}>
+    <group position={[0, 0.15, 0]}>
       <Suspense fallback={null}>
-        <AnatomicalLungsGLB breathScale={lungScale} hiccupPulse={hiccupPulse} />
+        {/* Model 3D Paru-paru */}
+        <HologramGLB
+          filename="lungs.glb"
+          position={[0, 0.65, 0]}
+          rotation={[0, Math.sin(frame * 0.01) * 0.25, 0]}
+          scale={[lungScale, lungScale * 1.05, lungScale]}
+          emissiveIntensity={0.8 + hiccupPulse * 2.5}
+        />
+
+        {/* Model 3D Otak (Muncul di kanan atas saat narasi otak & saraf) */}
+        {showBrain && (
+          <HologramGLB
+            filename="brain.glb"
+            position={[2.7, 1.55, 0.3]}
+            rotation={[0, frame * 0.018, 0]}
+            scale={brainScale}
+            emissiveIntensity={1.2 + Math.sin(frame * 0.12) * 0.5}
+          />
+        )}
       </Suspense>
 
-      <Torus args={[2.1 * lungScale, 0.03, 16, 64]} position={[0, 0.7, 0]} rotation={[Math.PI / 2, 0, 0]}>
+      {/* Cincin Indikator Tekanan Rongga Dada */}
+      <Torus args={[2.1 * lungScale, 0.03, 16, 64]} position={[0, 0.65, 0]} rotation={[Math.PI / 2, 0, 0]}>
         <meshStandardMaterial color="#ffffff" emissive="#097969" emissiveIntensity={1.5} transparent opacity={0.5} />
       </Torus>
 
+      {/* Lantai Lift / Kubah Diafragma */}
       <group position={[0, diaphragmY, 0]}>
-        <RoundedBox args={[4.8, 0.3, 2.8]} radius={0.12} smoothness={4}>
+        <RoundedBox args={[4.8, 0.28, 2.6]} radius={0.12} smoothness={4}>
           <meshStandardMaterial
             color="#097969"
             emissive="#ffffff"
@@ -271,32 +328,48 @@ export const DiaphragmElevatorScene: React.FC = () => {
   );
 };
 
+// 5. Scene 3 (Frame 5460 - 6960): Spasme Paru-paru (.glb) & Laring/Pita Suara (.glb)
 export const VocalChordSnapScene: React.FC = () => {
   const frame = useCurrentFrame();
-  const hiccupPulse = useHiccupImpulse();
+  const hiccupPulse = useHiccupImpulse(5460);
 
   const snapCycle = Math.sin(frame * 0.14);
-  const isSnapped = snapCycle > 0.65 || hiccupPulse > 0.2;
+  const isSnapped = snapCycle > 0.65 || hiccupPulse > 0.15;
 
-  const valveGap = isSnapped ? 0.02 : interpolate(snapCycle, [-1, 0.65], [1.15, 0.4]);
-  const spasmJerkY = isSnapped ? -2.2 : -1.1 + Math.sin(frame * 0.06) * 0.3;
+  const valveGap = isSnapped ? 0.02 : interpolate(snapCycle, [-1, 0.65], [1.1, 0.35]);
+  const spasmJerkY = isSnapped ? -2.2 : -1.2 + Math.sin(frame * 0.06) * 0.25;
 
   return (
     <group>
       <Suspense fallback={null}>
-        <group position={[0, -0.3, -0.8]} scale={0.85}>
-          <AnatomicalLungsGLB breathScale={isSnapped ? 1.38 : 1.0} hiccupPulse={hiccupPulse} />
-        </group>
+        {/* Model Laring (Pita Suara) di Bagian Atas */}
+        <HologramGLB
+          filename="larynx.glb"
+          position={[0, 1.45, 0.2]}
+          rotation={[0, frame * 0.015, 0]}
+          scale={isSnapped ? [1.15, 0.92, 1.15] : 1.0}
+          emissiveIntensity={isSnapped ? 3.2 : 0.9}
+        />
+
+        {/* Model Paru-paru di Bawahnya yang Ikut Menyentak */}
+        <HologramGLB
+          filename="lungs.glb"
+          position={[0, -0.45, -0.7]}
+          rotation={[0, Math.sin(frame * 0.01) * 0.2, 0]}
+          scale={isSnapped ? 1.08 : 0.85}
+          emissiveIntensity={0.75 + hiccupPulse * 2.5}
+        />
       </Suspense>
 
-      <RoundedBox args={[1.65, 0.38, 1.2]} position={[-0.85 - valveGap * 0.5, 1.55, 0]} radius={0.1}>
+      {/* Katup Pita Suara Kiri & Kanan (Indikator Penutupan) */}
+      <RoundedBox args={[1.35, 0.26, 0.9]} position={[-0.7 - valveGap * 0.5, 1.5, 0.7]} radius={0.08}>
         <meshStandardMaterial
           color="#ffffff"
           emissive="#097969"
           emissiveIntensity={isSnapped ? 4.2 : 0.8}
         />
       </RoundedBox>
-      <RoundedBox args={[1.65, 0.38, 1.2]} position={[0.85 + valveGap * 0.5, 1.55, 0]} radius={0.1}>
+      <RoundedBox args={[1.35, 0.26, 0.9]} position={[0.7 + valveGap * 0.5, 1.5, 0.7]} radius={0.08}>
         <meshStandardMaterial
           color="#ffffff"
           emissive="#097969"
@@ -304,60 +377,164 @@ export const VocalChordSnapScene: React.FC = () => {
         />
       </RoundedBox>
 
+      {/* Kubah Diafragma Menyentak di Bawah */}
       <mesh position={[0, spasmJerkY, 0]} rotation={[0, frame * 0.01, 0]}>
-        <cylinderGeometry args={[2.3, 2.7, 0.35, 32]} />
+        <cylinderGeometry args={[2.3, 2.7, 0.3, 32]} />
         <meshStandardMaterial color="#097969" emissive="#097969" emissiveIntensity={1.6} wireframe />
       </mesh>
     </group>
   );
 };
 
+// 6. Scene 4 (Frame 6960 - 10744): Lambung + Soda -> Drummer -> Otak & Saraf
 export const TriggersAndDrummerScene: React.FC = () => {
   const frame = useCurrentFrame();
-  const hiccupPulse = useHiccupImpulse();
+  const hiccupPulse = useHiccupImpulse(6960);
 
-  const isGlitchBeat = frame % 140 > 115 || hiccupPulse > 0.1;
-  const drumScale = isGlitchBeat ? 1.55 + hiccupPulse * 0.5 : 1 + Math.abs(Math.sin(frame * 0.1)) * 0.18;
-  const tiltGlitch = isGlitchBeat ? Math.sin(frame * 0.8) * 0.4 : 0;
+  // Fase 1 (0 - 1788): 01:56 - 02:25 -> Lambung mengembang & Kaleng Soda
+  const isStomachPhase = frame < 1788;
+  // Fase 2 (1788 - 2693): 02:25 - 02:40 -> Analogi Drummer
+  const isDrummerPhase = frame >= 1788 && frame < 2693;
+  // Fase 3 (2693+): 02:40 - 02:59 -> Sistem Saraf & Otak
+  const isBrainPhase = frame >= 2693;
+
+  const stomachBloat = 1.15 + Math.sin(frame * 0.04) * 0.18 + interpolate(frame, [0, 1500], [0, 0.25], { extrapolateRight: 'clamp' });
+  const showSoda = frame >= 880 && isStomachPhase; // Muncul saat 02:11
+
+  const isGlitchBeat = frame % 120 > 96 || hiccupPulse > 0.1;
+  const drumScale = isGlitchBeat ? 1.48 + hiccupPulse * 0.4 : 1.2 + Math.abs(Math.sin(frame * 0.14)) * 0.15;
+  const tiltGlitch = isGlitchBeat ? Math.sin(frame * 0.9) * 0.35 : 0;
 
   return (
-    <group rotation={[tiltGlitch, frame * 0.008, 0]}>
-      <Torus args={[2.0, 0.12, 24, 64]} scale={drumScale}>
-        <meshStandardMaterial
-          color={isGlitchBeat ? '#ffffff' : '#097969'}
-          emissive="#097969"
-          emissiveIntensity={isGlitchBeat ? 4.5 : 1.0}
-        />
-      </Torus>
-      <Torus args={[1.3, 0.06, 16, 48]} rotation={[Math.PI / 3, 0, 0]} scale={drumScale * 0.95}>
-        <meshStandardMaterial color="#ffffff" emissive="#097969" emissiveIntensity={1.8} wireframe />
-      </Torus>
-    </group>
+    <Suspense fallback={null}>
+      {/* FASE 1: Lambung & Minuman Bersoda */}
+      {isStomachPhase && (
+        <group>
+          <HologramGLB
+            filename="stomach.glb"
+            position={[showSoda ? -0.9 : 0, 0.1, 0]}
+            rotation={[0, frame * 0.012, 0]}
+            scale={stomachBloat}
+            emissiveIntensity={0.95 + Math.sin(frame * 0.08) * 0.3}
+          />
+          {showSoda && (
+            <HologramGLB
+              filename="soda-can.glb"
+              position={[2.0, Math.sin(frame * 0.06) * 0.35, 0.4]}
+              rotation={[0.25, frame * 0.03, -0.2]}
+              scale={1.05}
+              emissiveIntensity={1.4}
+            />
+          )}
+        </group>
+      )}
+
+      {/* FASE 2: Snare Drum (Analogi Drummer Salah Ketuk) */}
+      {isDrummerPhase && (
+        <group rotation={[0.3 + tiltGlitch, frame * 0.012, 0]}>
+          <HologramGLB
+            filename="drum.glb"
+            position={[0, 0, 0]}
+            scale={drumScale}
+            emissiveIntensity={isGlitchBeat ? 3.5 : 1.0}
+          />
+          <Torus args={[2.3, 0.07, 20, 64]} rotation={[Math.PI / 2, 0, 0]} scale={drumScale * 0.9}>
+            <meshStandardMaterial
+              color={isGlitchBeat ? '#ffffff' : '#097969'}
+              emissive="#097969"
+              emissiveIntensity={isGlitchBeat ? 4.5 : 1.1}
+            />
+          </Torus>
+        </group>
+      )}
+
+      {/* FASE 3: Otak & Sinyal Sistem Saraf */}
+      {isBrainPhase && (
+        <group>
+          <HologramGLB
+            filename="brain.glb"
+            position={[0, 0.2, 0]}
+            rotation={[0, frame * 0.016, 0]}
+            scale={1.45 + Math.sin(frame * 0.08) * 0.08 + hiccupPulse * 0.3}
+            emissiveIntensity={1.2 + Math.sin(frame * 0.15) * 0.6 + hiccupPulse * 3}
+          />
+          <Torus args={[2.2, 0.04, 16, 64]} rotation={[frame * 0.02, frame * 0.015, 0]}>
+            <meshStandardMaterial color="#ffffff" emissive="#097969" emissiveIntensity={2.2} />
+          </Torus>
+        </group>
+      )}
+    </Suspense>
   );
 };
 
+// 7. Scene 5 (Frame 10744 - 16980): Gelas Air -> Jam 48 Jam -> Gelombang Harmoni Penutup
 export const HarmonyWaveScene: React.FC = () => {
   const frame = useCurrentFrame();
-  const hiccupPulse = useHiccupImpulse();
+  const hiccupPulse = useHiccupImpulse(10744);
   const points = useMemo(() => Array.from({ length: 28 }), []);
+
+  // Fase 1 (local frame 0 - 3015): 02:59 - 03:49 -> Gelas Air & Gelombang CO2
+  const showWaterGlass = frame >= 120 && frame < 2950;
+  // Fase 2 (local frame 3015 - 4024): 03:49 - 04:06 -> Jam Peringatan 48 Jam
+  const showClock = frame >= 2950 && frame < 4100;
+  // Fase 3 (local frame 4100+): 04:06 - 04:43 -> Penutup (Paru-paru & Harmoni)
+  const showOutroModel = frame >= 4100;
 
   return (
     <group>
-      {points.map((_, i) => {
-        const x = (i - 13.5) * 0.32;
-        const y = Math.sin(frame * 0.04 + i * 0.35) * (1.1 + hiccupPulse * 1.2);
-        const z = Math.cos(frame * 0.04 + i * 0.35) * 0.8;
-        return (
-          <Sphere key={i} args={[0.16, 16, 16]} position={[x, y, z]} scale={1 + hiccupPulse * 0.8}>
-            <meshStandardMaterial
-              color="#ffffff"
-              emissive="#097969"
-              emissiveIntensity={1.8 + hiccupPulse * 3}
-              roughness={0.1}
-            />
-          </Sphere>
-        );
-      })}
+      {/* Gelombang Harmoni Partikel CO2 di Latar Belakang */}
+      <group position={[0, -0.9, -1.5]}>
+        {points.map((_, i) => {
+          const x = (i - 13.5) * 0.36;
+          const y = Math.sin(frame * 0.04 + i * 0.35) * (0.9 + hiccupPulse * 1.1);
+          const z = Math.cos(frame * 0.04 + i * 0.35) * 0.7;
+          return (
+            <Sphere key={i} args={[0.14, 16, 16]} position={[x, y, z]} scale={1 + hiccupPulse * 0.7}>
+              <meshStandardMaterial
+                color="#ffffff"
+                emissive="#097969"
+                emissiveIntensity={1.6 + hiccupPulse * 3}
+                roughness={0.1}
+              />
+            </Sphere>
+          );
+        })}
+      </group>
+
+      <Suspense fallback={null}>
+        {/* Model Gelas Air */}
+        {showWaterGlass && (
+          <HologramGLB
+            filename="water-glass.glb"
+            position={[0, 0.35 + Math.sin(frame * 0.04) * 0.2, 0.4]}
+            rotation={[0.15, frame * 0.015, Math.sin(frame * 0.03) * 0.12]}
+            scale={1.35}
+            emissiveIntensity={1.15}
+          />
+        )}
+
+        {/* Model Jam Peringatan 48 Jam */}
+        {showClock && (
+          <HologramGLB
+            filename="clock.glb"
+            position={[0, 0.3, 0.5]}
+            rotation={[0, Math.sin(frame * 0.025) * 0.35, Math.sin(frame * 0.35) * 0.06]}
+            scale={1.45 + Math.sin(frame * 0.15) * 0.08}
+            emissiveIntensity={1.8 + Math.abs(Math.sin(frame * 0.15)) * 1.4}
+          />
+        )}
+
+        {/* Model Penutup (Paru-paru Harmonis) */}
+        {showOutroModel && (
+          <HologramGLB
+            filename="lungs.glb"
+            position={[0, 0.35, 0.3]}
+            rotation={[0, frame * 0.012, 0]}
+            scale={1.15 + Math.sin(frame * 0.04) * 0.08 + hiccupPulse * 0.25}
+            emissiveIntensity={1.0 + hiccupPulse * 3.0}
+          />
+        )}
+      </Suspense>
     </group>
   );
 };
