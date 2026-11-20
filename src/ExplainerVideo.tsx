@@ -4,6 +4,7 @@ import {
   Audio,
   interpolate,
   Sequence,
+  spring,
   staticFile,
   useCurrentFrame,
   useVideoConfig,
@@ -71,6 +72,17 @@ const SCENE_OVERLAYS: OverlayMeta[] = [
     note: 'Tahan nafas ubah kadar CO2 - Tulis trik andalanmu di komentar!',
   },
 ];
+
+// Konversi detik -> frame (komposisi berjalan di 60 fps)
+const sec = (s: number) => Math.round(s * 60);
+
+const TOTAL_FRAMES = 283 * 60;
+
+// Kartu "ringkasan" yang bisa di-screenshot/disimpan penonton (muncul saat narasi menutup)
+const RECAP_FROM = sec(229.33);
+const RECAP_END = sec(257.59);
+// Kartu ajakan komentar (sinkron dengan kalimat "Trik apa yang biasanya kamu pakai?")
+const CTA_FROM = sec(257.59);
 
 export const ExplainerVideo: React.FC = () => {
   const frame = useCurrentFrame();
@@ -168,6 +180,35 @@ export const ExplainerVideo: React.FC = () => {
         </Sequence>
       ))}
 
+      {/* RETENSI 1: Hook besar di 3 detik pertama */}
+      <Sequence from={0} durationInFrames={200}>
+        <HookCard />
+      </Sequence>
+
+      {/* RETENSI 2: Janji di awal -> alasan untuk menonton sampai akhir */}
+      <Sequence from={sec(8)} durationInFrames={sec(12)}>
+        <TeaserChip text="TUNGGU DI AKHIR: 3 trik + kapan harus ke dokter" />
+      </Sequence>
+
+      {/* RETENSI 3: "Selanjutnya..." di 5 detik terakhir tiap bagian (open loop) */}
+      {SCENE_OVERLAYS.slice(0, -1).map((scene, idx) => (
+        <Sequence
+          key={`next-${idx}`}
+          from={scene.from + scene.duration - 300}
+          durationInFrames={300}
+        >
+          <NextUpChip title={SCENE_OVERLAYS[idx + 1].title} />
+        </Sequence>
+      ))}
+
+      {/* RETENSI 4: Ringkasan + ajakan komentar di bagian penutup */}
+      <Sequence from={RECAP_FROM} durationInFrames={RECAP_END - RECAP_FROM}>
+        <RecapCard />
+      </Sequence>
+      <Sequence from={CTA_FROM} durationInFrames={TOTAL_FRAMES - CTA_FROM}>
+        <CommentCtaCard />
+      </Sequence>
+
       {activeSubtitle && (
         <AbsoluteFill className="justify-end items-center pb-14 pointer-events-none">
           <div className="px-10 py-5 rounded-2xl bg-[#0b3d2e]/55 backdrop-blur-md border border-[#097969]/60 shadow-[0_8px_32px_rgba(9,121,105,0.3)] max-w-4xl text-center">
@@ -180,6 +221,8 @@ export const ExplainerVideo: React.FC = () => {
           </div>
         </AbsoluteFill>
       )}
+
+      <ProgressBar />
     </AbsoluteFill>
   );
 };
@@ -217,6 +260,170 @@ const SceneHeaderCard: React.FC<{ badge: string; title: string; note: string }> 
         >
           {note}
         </p>
+      </div>
+    </AbsoluteFill>
+  );
+};
+
+// ---------------------------------------------------------------------------
+// KOMPONEN RETENSI
+// ---------------------------------------------------------------------------
+
+// Hook besar di awal: memancing rasa penasaran sebelum penjelasan dimulai
+const HookCard: React.FC = () => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const enter = spring({ frame, fps, config: { damping: 12, stiffness: 140 } });
+  const exit = interpolate(frame, [150, 200], [1, 0], {
+    extrapolateLeft: 'clamp',
+    extrapolateRight: 'clamp',
+  });
+
+  return (
+    <AbsoluteFill className="justify-center items-center pointer-events-none">
+      <div
+        style={{ opacity: exit, transform: `scale(${0.85 + enter * 0.15})` }}
+        className="px-14 py-8 rounded-3xl bg-[#041611]/70 backdrop-blur-md border-2 border-[#097969] text-center max-w-4xl"
+      >
+        <h1
+          style={{ fontFamily: poppinsFont }}
+          className="text-white text-6xl font-bold tracking-tight leading-tight"
+        >
+          KENAPA TUBUHMU TIBA-TIBA BILANG <span className="text-[#2ee6c5]">"HIK!"</span>?
+        </h1>
+      </div>
+    </AbsoluteFill>
+  );
+};
+
+// Chip kecil di kanan atas: janji isi video
+const TeaserChip: React.FC<{ text: string }> = ({ text }) => {
+  const frame = useCurrentFrame();
+  const { durationInFrames } = useVideoConfig();
+  const opacity = interpolate(
+    frame,
+    [0, 20, durationInFrames - 20, durationInFrames],
+    [0, 1, 1, 0],
+    { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' }
+  );
+
+  return (
+    <AbsoluteFill className="justify-start items-end p-12 pointer-events-none">
+      <div
+        style={{ opacity, fontFamily: poppinsFont }}
+        className="px-6 py-3 rounded-full bg-[#097969]/60 border border-white/70 text-white text-xl font-bold tracking-wide"
+      >
+        {text}
+      </div>
+    </AbsoluteFill>
+  );
+};
+
+// Chip "Selanjutnya" di kanan bawah: open loop agar penonton tidak pergi di pergantian bagian
+const NextUpChip: React.FC<{ title: string }> = ({ title }) => {
+  const frame = useCurrentFrame();
+  const { durationInFrames } = useVideoConfig();
+  const opacity = interpolate(
+    frame,
+    [0, 20, durationInFrames - 20, durationInFrames],
+    [0, 1, 1, 0],
+    { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' }
+  );
+  const x = interpolate(frame, [0, 20], [40, 0], { extrapolateRight: 'clamp' });
+
+  return (
+    <AbsoluteFill className="justify-end items-end pr-12 pb-28 pointer-events-none">
+      <div
+        style={{ opacity, transform: `translateX(${x}px)`, fontFamily: poppinsFont }}
+        className="px-6 py-4 rounded-2xl bg-[#0b3d2e]/70 backdrop-blur-md border border-[#097969] max-w-md"
+      >
+        <div className="text-[#2ee6c5] text-sm font-bold tracking-widest">SELANJUTNYA</div>
+        <div className="text-white text-2xl font-bold leading-snug">{title}</div>
+      </div>
+    </AbsoluteFill>
+  );
+};
+
+// Ringkasan trik: layak di-screenshot, mendorong penonton menyimpan/membagikan
+const RecapCard: React.FC = () => {
+  const frame = useCurrentFrame();
+  const { fps, durationInFrames } = useVideoConfig();
+  const fade = interpolate(frame, [0, 20, durationInFrames - 20, durationInFrames], [0, 1, 1, 0], {
+    extrapolateLeft: 'clamp',
+    extrapolateRight: 'clamp',
+  });
+
+  const items = [
+    'Tahan napas sejenak',
+    'Minum air perlahan',
+    'Bernapas tenang & rileks',
+    'Lebih dari 48 jam? Periksa ke dokter',
+  ];
+
+  return (
+    <AbsoluteFill className="justify-center items-end pr-16 pointer-events-none">
+      <div
+        style={{ opacity: fade, fontFamily: poppinsFont }}
+        className="px-8 py-6 rounded-2xl bg-[#0b3d2e]/70 backdrop-blur-md border border-[#097969] max-w-md"
+      >
+        <div className="text-[#2ee6c5] text-sm font-bold tracking-widest mb-3">RINGKASAN</div>
+        {items.map((text, i) => {
+          const p = spring({ frame: frame - 12 - i * 14, fps, config: { damping: 14 } });
+          return (
+            <div
+              key={text}
+              style={{ opacity: p, transform: `translateX(${(1 - p) * 30}px)` }}
+              className="text-white text-2xl font-bold leading-snug mb-2"
+            >
+              {i + 1}. {text}
+            </div>
+          );
+        })}
+      </div>
+    </AbsoluteFill>
+  );
+};
+
+// Ajakan komentar di akhir
+const CommentCtaCard: React.FC = () => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const p = spring({ frame, fps, config: { damping: 12 } });
+
+  return (
+    <AbsoluteFill className="justify-center items-center pointer-events-none">
+      <div
+        style={{
+          opacity: p,
+          transform: `translateY(${(1 - p) * 40 - 120}px) scale(${0.9 + p * 0.1})`,
+          fontFamily: poppinsFont,
+        }}
+        className="px-12 py-7 rounded-3xl bg-[#041611]/75 backdrop-blur-md border-2 border-[#2ee6c5] text-center"
+      >
+        <div className="text-white text-5xl font-bold">Trik cegukanmu apa?</div>
+        <div className="text-[#2ee6c5] text-3xl font-bold mt-2">Tulis di kolom komentar</div>
+      </div>
+    </AbsoluteFill>
+  );
+};
+
+// Progress bar di dasar layar dengan penanda tiap bagian
+const ProgressBar: React.FC = () => {
+  const frame = useCurrentFrame();
+  const { durationInFrames } = useVideoConfig();
+  const pct = (frame / durationInFrames) * 100;
+
+  return (
+    <AbsoluteFill className="justify-end pointer-events-none">
+      <div className="relative w-full h-2 bg-white/10">
+        <div style={{ width: `${pct}%` }} className="h-full bg-[#2ee6c5]" />
+        {SCENE_OVERLAYS.slice(1).map((scene, i) => (
+          <div
+            key={i}
+            style={{ left: `${(scene.from / durationInFrames) * 100}%` }}
+            className="absolute top-0 h-full w-[3px] bg-white/80"
+          />
+        ))}
       </div>
     </AbsoluteFill>
   );
